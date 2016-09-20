@@ -35,7 +35,8 @@ EOF
 
 cat minitwit.env
 
-CONTAINER_ID="$(docker run -d --env-file=minitwit.env "${DOCKER_IMG}")"
+sleep 30
+CONTAINER_ID="$(docker run -d --name=minitwit --env-file=minitwit.env "${DOCKER_IMG}")"
 
 function cleanup {
   docker logs "$CONTAINER_ID" > minitwit.log
