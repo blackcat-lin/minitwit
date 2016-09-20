@@ -4,28 +4,46 @@ set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
+set -e -x
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE}")/.." && pwd -P)"
 
 cd "${script_dir}"
 
+DOCKER_IMG="${DOCKER_IMG:-karlkfi/minitwit}"
+
+COOKIE_JAR="cookies-$(date | md5sum | head -c 10).txt"
+
+cat > mysql.env << EOF
+MYSQL_ROOT_PASSWORD=root
+MYSQL_DATABASE=minitwit
+MYSQL_USER=minitwit
+MYSQL_PASSWORD=minitwit
+EOF
+
+MYSQLCONTAINER_ID="$(docker run -d --name=mysql --env-file=mysql.env mysql:5.7.15)"
+
+MYSQL_IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' ${MYSQLCONTAINER_ID})
+
 cat > minitwit.env << EOF
-SPRING_DATASOURCE_URL=jdbc:mysql://mysql.marathon.mesos:3306/minitwit?autoReconnect=true&useSSL=false
+SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_IP}:3306/minitwit?autoReconnect=true&useSSL=false
 SPRING_DATASOURCE_USERNAME=minitwit
 SPRING_DATASOURCE_PASSWORD=minitwit
 SPRING_DATASOURCE_DRIVER-CLASS-NAME=com.mysql.cj.jdbc.Driver
 SPRING_DATASOURCE_PLATFORM=mysql
 EOF
 
-DOCKER_IMG="${DOCKER_IMG:-karlkfi/minitwit}"
+cat minitwit.env
 
-COOKIE_JAR="cookies-$(date | md5sum | head -c 10).txt"
-
-CONTAINER_ID="$(docker run -d "${DOCKER_IMG}" --env-file=minitwit.env)"
+CONTAINER_ID="$(docker run -d --env-file=minitwit.env "${DOCKER_IMG}")"
 
 function cleanup {
+  docker logs "$CONTAINER_ID" > minitwit.log
+  docker logs "$MYSQLCONTAINER_ID" > mysql.log
+	
   rm -f "${COOKIE_JAR}"
   docker rm -f "$CONTAINER_ID"
+  docker rm -f "$MYSQLCONTAINER_ID"
 }
 trap cleanup EXIT
 
